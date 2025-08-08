@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>iOS 18 风格 · 天气卡片</title>
+    <meta name="color-scheme" content="light dark" />
+    <style>
+      :root {
+        --radius-xl: 22px;
+        --radius-lg: 16px;
+        --radius-md: 12px;
+        --shadow-ambient: 0 10px 30px rgba(0,0,0,.15), 0 2px 8px rgba(0,0,0,.12);
+        --shadow-soft: 0 6px 18px rgba(0,0,0,.12);
+        --border: 1px solid rgba(255,255,255,.3);
+        --border-dark: 1px solid rgba(255,255,255,.12);
+
+        --bg-app: 245 245 255;
+        --text: 20 22 28;
+        --text-dim: 86 90 100;
+        --surface: 255 255 255 / .35;
+        --surface-strong: 255 255 255 / .52;
+        --tint: 0 122 255;
+
+        --ok: 52 199 89;
+        --warn: 255 159 10;
+        --err: 255 69 58;
+      }
+
+      [data-theme="night"] {
+        --bg-app: 8 10 18;
+        --text: 232 236 244;
+        --text-dim: 162 168 180;
+        --surface: 18 20 28 / .38;
+        --surface-strong: 28 30 38 / .56;
+        --tint: 10 132 255;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: rgb(var(--text));
+        background: radial-gradient(1200px 800px at 10% 10%, rgba(255,255,255,.65), rgba(255,255,255,0)) no-repeat,
+                    conic-gradient(from 210deg at 70% 20%, rgba(0,153,255,.20), rgba(161,77,255,.18), rgba(255,204,0,.14), rgba(0,153,255,.20)) fixed;
+        background-color: rgb(var(--bg-app));
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+
+      /* Subtle animated backdrop sheen */
+      body::before {
+        content: "";
+        position: fixed; inset: -20vmax;
+        background: radial-gradient(60vmax 60vmax at var(--mx,70%) var(--my,30%), rgba(255,255,255,.12), rgba(255,255,255,0) 60%),
+                    radial-gradient(40vmax 40vmax at calc(100% - var(--mx,70%)) calc(100% - var(--my,30%)), rgba(0,153,255,.10), transparent 60%);
+        filter: blur(40px) saturate(120%);
+        z-index: 0;
+        pointer-events: none;
+        transition: 600ms ease-out;
+      }
+
+      .app-shell {
+        position: relative; z-index: 1;
+        min-height: 100dvh;
+        display: grid;
+        grid-template-rows: auto 1fr;
+        padding: 28px clamp(16px, 4vw, 32px) 24px;
+        gap: 18px;
+      }
+
+      .ios-header {
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 16px; flex-wrap: wrap;
+      }
+      .large-title {
+        margin: 0; font-size: clamp(28px, 4vw, 42px); font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .subtitle { margin: 4px 0 0; color: rgb(var(--text-dim)); }
+      .header-left { display: grid; }
+      .header-controls { display: flex; align-items: center; gap: 10px; }
+
+      .segment {
+        display: inline-flex; gap: 6px; padding: 6px; border-radius: 999px;
+        background: rgba(var(--bg-app) / .5);
+        backdrop-filter: saturate(140%) blur(8px);
+        border: var(--border-dark);
+        box-shadow: var(--shadow-soft);
+      }
+      .seg-btn {
+        appearance: none; border: 0; padding: 8px 14px; border-radius: 999px; cursor: pointer;
+        font-weight: 600; color: rgb(var(--text)); background: transparent;
+        transition: .25s ease;
+      }
+      .seg-btn.active {
+        background: rgba(var(--tint) / .15);
+        color: rgb(var(--tint));
+      }
+      .theme-toggle {
+        height: 40px; width: 40px; border-radius: 12px; border: var(--border-dark);
+        background: rgba(var(--bg-app) / .55);
+        backdrop-filter: saturate(140%) blur(8px);
+        display: grid; place-items: center; cursor: pointer;
+        box-shadow: var(--shadow-soft);
+        transition: transform .2s ease, background .3s ease;
+      }
+      .theme-toggle:active { transform: scale(.96); }
+
+      .cards-scroll {
+        --card-w: min(420px, 82vw);
+        display: grid; grid-auto-flow: column; grid-auto-columns: var(--card-w);
+        gap: clamp(14px, 2.8vw, 22px);
+        overflow-x: auto; overflow-y: visible; padding-bottom: 4px;
+        scroll-snap-type: x mandatory; scroll-padding: 10px;
+        -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain;
+      }
+      .cards-scroll::-webkit-scrollbar { height: 10px; }
+      .cards-scroll::-webkit-scrollbar-thumb {
+        background: rgba(120,120,140,.35); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box;
+      }
+
+      .weather-card {
+        position: relative; isolation: isolate;
+        height: clamp(320px, 68vh, 520px); scroll-snap-align: center; border-radius: var(--radius-xl);
+        background: rgba(var(--surface));
+        border: var(--border-dark);
+        box-shadow: var(--shadow-ambient);
+        overflow: hidden;
+        transform-style: preserve-3d; perspective: 1000px;
+        transition: transform 300ms ease, box-shadow 300ms ease;
+      }
+      .weather-card:hover { box-shadow: 0 24px 60px rgba(0,0,0,.22), 0 8px 20px rgba(0,0,0,.14); }
+      .weather-card::after { /* glossy edge */
+        content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 3;
+        background: radial-gradient(100% 70% at 0% 0%, rgba(255,255,255,.25), transparent 60%);
+        mix-blend-mode: overlay; opacity: .55;
+      }
+
+      .card-bg { position: absolute; inset: 0; z-index: 0; }
+      .card-content { position: relative; z-index: 2; height: 100%; display: grid; grid-template-rows: auto 1fr auto; padding: 18px; }
+
+      .row-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .city { font-weight: 700; letter-spacing: -.01em; }
+      .time { color: rgb(var(--text-dim)); font-weight: 600; }
+
+      .main { display: grid; grid-template-columns: 1.1fr 1fr; align-items: center; gap: 12px; }
+      .temp-wrap { display: grid; align-items: center; }
+      .temp {
+        font-size: clamp(46px, 9vw, 76px); font-weight: 800; letter-spacing: -.04em;
+        line-height: 1; display: inline-flex; align-items: baseline; gap: 4px;
+        text-shadow: 0 10px 30px rgba(0,0,0,.22);
+      }
+      .cond { color: rgb(var(--text-dim)); font-weight: 700; margin-top: 6px; }
+      .icon-xl { width: clamp(90px, 12vw, 120px); height: clamp(90px, 12vw, 120px); }
+
+      .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+      .chip {
+        padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,.22);
+        border: var(--border-dark); backdrop-filter: blur(10px) saturate(140%);
+        font-weight: 600; color: rgb(var(--text));
+      }
+
+      .details-toggle {
+        appearance: none; border: 0; width: 100%; text-align: center; background: rgba(255,255,255,.18);
+        border-radius: var(--radius-md); padding: 10px 12px; font-weight: 700; cursor: pointer; color: rgb(var(--text));
+        border: var(--border-dark); backdrop-filter: blur(8px) saturate(140%);
+        transition: background .25s ease, transform .15s ease;
+      }
+      .details-toggle:active { transform: scale(.98); }
+
+      .details {
+        display: grid; grid-template-rows: 0fr; transition: grid-template-rows .45s ease;
+      }
+      .weather-card[data-open="true"] .details { grid-template-rows: 1fr; }
+      .details-inner { overflow: hidden; }
+      .metrics { display: grid; grid-template-columns: 1fr; gap: 10px; padding-top: 12px; }
+      .metric { display: grid; grid-template-columns: 110px 1fr auto; align-items: center; gap: 10px; }
+      .metric .name { color: rgb(var(--text-dim)); font-weight: 700; }
+      .bar { height: 8px; border-radius: 999px; background: rgba(255,255,255,.2); overflow: hidden; border: var(--border-dark); }
+      .bar > i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, rgba(var(--tint) /.8), rgba(108,93,211,.9)); border-radius: inherit; transition: width .8s cubic-bezier(.2,.7,.2,1); }
+
+      /* Shine following cursor */
+      .weather-card .shine {
+        position: absolute; inset: 0; z-index: 1; pointer-events: none;
+        background: radial-gradient(400px 300px at var(--px,50%) var(--py,50%), rgba(255,255,255,.35), transparent 55%);
+        mix-blend-mode: soft-light; opacity: .8; transition: opacity .3s;
+      }
+
+      /* Weather specific backgrounds */
+      .sunny .card-bg {
+        background:
+          radial-gradient(180px 180px at 78% 20%, rgba(255,230,120,.75), rgba(255,214,0,.45), rgba(255,214,0,0) 70%),
+          radial-gradient(300px 180px at 60% 0%, rgba(255,255,255,.25), transparent 70%);
+        animation: sunDrift 9s ease-in-out infinite alternate;
+      }
+      .sunny .ray { position: absolute; inset: -20% -20%; background: conic-gradient(from 0deg, rgba(255,214,0,.16), transparent 40% 60%, rgba(255,214,0,.16)); filter: blur(14px); animation: spin 18s linear infinite; }
+      @keyframes sunDrift { to { transform: translate3d(4px, -6px, 0) scale(1.015); } }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .windy .card-bg {
+        background:
+          radial-gradient(50% 50% at 10% 90%, rgba(120,180,255,.22), transparent 60%),
+          radial-gradient(60% 60% at 100% 0%, rgba(200,220,255,.18), transparent 60%);
+      }
+      .wind-gust { position: absolute; left: -30%; width: 30%; height: 2px; top: var(--y); background: linear-gradient(90deg, transparent, rgba(120,170,255,.9), transparent); filter: blur(.5px); animation: blow var(--d) linear var(--delay) infinite; border-radius: 99px; }
+      @keyframes blow { to { transform: translateX(420%); } }
+
+      .rain .card-bg {
+        background:
+          radial-gradient(50% 50% at 80% 0%, rgba(180,200,255,.22), transparent 60%),
+          radial-gradient(80% 50% at 0% 30%, rgba(100,120,180,.16), transparent 70%);
+      }
+      .drop { position: absolute; top: -10%; width: 2px; height: var(--h,18px); left: var(--x); background: linear-gradient(180deg, rgba(255,255,255,.0), rgba(180,210,255,.95)); filter: blur(.3px); animation: fall var(--d,1.8s) linear var(--delay) infinite; opacity: .9; }
+      @keyframes fall { to { transform: translateY(120%); } }
+
+      .snow .card-bg { background: radial-gradient(90% 70% at 100% 0%, rgba(210,220,255,.24), transparent 60%); }
+      .flake { position: absolute; top: -5%; left: var(--x); width: var(--s,6px); height: var(--s,6px); background: rgba(255,255,255,.9); border-radius: 50%; filter: drop-shadow(0 2px 2px rgba(0,0,0,.15)); animation: snowFall var(--d,6s) linear var(--delay) infinite, sway 2.2s ease-in-out infinite alternate; opacity: .95; }
+      @keyframes snowFall { to { transform: translateY(115%); } }
+      @keyframes sway { from { translate: -6px 0; } to { translate: 6px 0; } }
+
+      /* SF-like icon colors per weather */
+      .sunny .icon-xl { color: rgb(255,204,0); }
+      .windy .icon-xl { color: rgb(64,156,255); }
+      .rain .icon-xl { color: rgb(10,132,255); }
+      .snow .icon-xl { color: rgb(90,200,250); }
+
+      /* Reduced motion */
+      @media (prefers-reduced-motion: reduce) {
+        .weather-card, .ray, .wind-gust, .drop, .flake, body::before { animation: none !important; transition: none !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell" data-theme="day" data-unit="c">
+      <header class="ios-header">
+        <div class="header-left">
+          <h1 class="large-title">天气</h1>
+          <p class="subtitle">横板 · iOS 18 风格卡片</p>
+        </div>
+        <div class="header-controls">
+          <div class="segment" role="tablist" aria-label="单位">
+            <button class="seg-btn active" data-unit-target="c" role="tab" aria-selected="true">°C</button>
+            <button class="seg-btn" data-unit-target="f" role="tab" aria-selected="false">°F</button>
+          </div>
+          <button class="theme-toggle" id="themeBtn" aria-pressed="false" aria-label="切换昼夜">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <path d="M12 3.5c.7 0 1.4.08 2.05.24A6.75 6.75 0 0 0 5.74 12 6.75 6.75 0 0 0 12.26 18.26 8.5 8.5 0 1 1 12 3.5Z" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="cards-scroll" id="cards">
+        <!-- 晴天 -->
+        <article class="weather-card sunny" data-temp-c="28" data-wind="8" data-hum="35" data-open="false" aria-label="晴天">
+          <div class="shine"></div>
+          <div class="card-bg">
+            <div class="ray" aria-hidden="true"></div>
+          </div>
+          <div class="card-content">
+            <div class="row-top">
+              <div>
+                <div class="city">北京 · 朝阳</div>
+                <div class="time" data-time>今天 · 15:20</div>
+              </div>
+              <svg class="icon-xl" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <defs>
+                  <linearGradient id="gSun" x1="0" x2="1" y1="0" y2="1">
+                    <stop offset="0%" stop-color="#FFD60A"/>
+                    <stop offset="100%" stop-color="#FF9F0A"/>
+                  </linearGradient>
+                </defs>
+                <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+                  <circle cx="32" cy="32" r="12" fill="url(#gSun)" stroke="none"/>
+                  <path d="M32 8v8M32 48v8M8 32h8M48 32h8M14.9 14.9l5.7 5.7M43.4 43.4l5.7 5.7M14.9 49.1l5.7-5.7M43.4 20.6l5.7-5.7"/>
+                </g>
+              </svg>
+            </div>
+
+            <div class="main">
+              <div class="temp-wrap">
+                <div class="temp"><span data-temp>28</span><span>°</span></div>
+                <div class="cond">晴朗 · 紫外线较强</div>
+              </div>
+              <div class="chips">
+                <span class="chip">AQI 38 优</span>
+                <span class="chip">体感 <b data-feels-like>30</b>°</span>
+                <span class="chip">紫外线 7</span>
+              </div>
+            </div>
+
+            <div>
+              <button class="details-toggle" data-toggle>更多详情</button>
+              <div class="details">
+                <div class="details-inner">
+                  <div class="metrics">
+                    <div class="metric"><span class="name">风速</span><div class="bar"><i style="--val:40%"></i></div><span><b data-wind>8</b> km/h</span></div>
+                    <div class="metric"><span class="name">湿度</span><div class="bar"><i style="--val:35%"></i></div><span><b data-hum>35</b>%</span></div>
+                    <div class="metric"><span class="name">降水</span><div class="bar"><i style="width: 2%"></i></div><span>2%</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 大风 -->
+        <article class="weather-card windy" data-temp-c="22" data-wind="38" data-hum="40" data-open="false" aria-label="大风">
+          <div class="shine"></div>
+          <div class="card-bg" data-wind-layer></div>
+          <div class="card-content">
+            <div class="row-top">
+              <div>
+                <div class="city">内蒙古 · 呼和浩特</div>
+                <div class="time" data-time>今天 · 15:20</div>
+              </div>
+              <svg class="icon-xl" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 28h26c6 0 8-8 0-8-3 0-5 2-5 4"/>
+                  <path d="M6 40h36c7 0 9-10 0-10-3 0-6 2-6 5"/>
+                  <path d="M14 48h20"/>
+                </g>
+              </svg>
+            </div>
+
+            <div class="main">
+              <div class="temp-wrap">
+                <div class="temp"><span data-temp>22</span><span>°</span></div>
+                <div class="cond">大风 · 阵风明显</div>
+              </div>
+              <div class="chips">
+                <span class="chip">阵风 56 km/h</span>
+                <span class="chip">体感 <b data-feels-like>20</b>°</span>
+                <span class="chip">能见度 良</span>
+              </div>
+            </div>
+
+            <div>
+              <button class="details-toggle" data-toggle>更多详情</button>
+              <div class="details">
+                <div class="details-inner">
+                  <div class="metrics">
+                    <div class="metric"><span class="name">风速</span><div class="bar"><i style="width: 85%"></i></div><span><b data-wind>38</b> km/h</span></div>
+                    <div class="metric"><span class="name">湿度</span><div class="bar"><i style="width: 40%"></i></div><span><b data-hum>40</b>%</span></div>
+                    <div class="metric"><span class="name">降水</span><div class="bar"><i style="width: 10%"></i></div><span>10%</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 暴雨 -->
+        <article class="weather-card rain" data-temp-c="18" data-wind="16" data-hum="92" data-open="false" aria-label="暴雨">
+          <div class="shine"></div>
+          <div class="card-bg" data-rain-layer></div>
+          <div class="card-content">
+            <div class="row-top">
+              <div>
+                <div class="city">广东 · 深圳</div>
+                <div class="time" data-time>今天 · 15:20</div>
+              </div>
+              <svg class="icon-xl" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 30a10 10 0 1 1 20 0h4a8 8 0 1 1 0 16H20a8 8 0 1 1 0-16h2Z" fill="rgba(255,255,255,.18)" stroke="none"/>
+                  <path d="M24 44l-3 6M34 44l-3 6M44 44l-3 6"/>
+                </g>
+              </svg>
+            </div>
+
+            <div class="main">
+              <div class="temp-wrap">
+                <div class="temp"><span data-temp>18</span><span>°</span></div>
+                <div class="cond">暴雨 · 注意出行安全</div>
+              </div>
+              <div class="chips">
+                <span class="chip">降水 98%</span>
+                <span class="chip">体感 <b data-feels-like>17</b>°</span>
+                <span class="chip">雷达 强回波</span>
+              </div>
+            </div>
+
+            <div>
+              <button class="details-toggle" data-toggle>更多详情</button>
+              <div class="details">
+                <div class="details-inner">
+                  <div class="metrics">
+                    <div class="metric"><span class="name">风速</span><div class="bar"><i style="width: 35%"></i></div><span><b data-wind>16</b> km/h</span></div>
+                    <div class="metric"><span class="name">湿度</span><div class="bar"><i style="width: 92%"></i></div><span><b data-hum>92</b>%</span></div>
+                    <div class="metric"><span class="name">云底高度</span><div class="bar"><i style="width: 24%"></i></div><span>低</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 暴雪 -->
+        <article class="weather-card snow" data-temp-c="-5" data-wind="14" data-hum="80" data-open="false" aria-label="暴雪">
+          <div class="shine"></div>
+          <div class="card-bg" data-snow-layer></div>
+          <div class="card-content">
+            <div class="row-top">
+              <div>
+                <div class="city">黑龙江 · 哈尔滨</div>
+                <div class="time" data-time>今天 · 15:20</div>
+              </div>
+              <svg class="icon-xl" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 28a10 10 0 1 1 20 0h4a8 8 0 1 1 0 16H20a8 8 0 1 1 0-16h2Z" fill="rgba(255,255,255,.18)" stroke="none"/>
+                  <path d="M24 44l4 4M28 44l-4 4M36 44l4 4M40 44l-4 4M32 42v8"/>
+                </g>
+              </svg>
+            </div>
+
+            <div class="main">
+              <div class="temp-wrap">
+                <div class="temp"><span data-temp>-5</span><span>°</span></div>
+                <div class="cond">暴雪 · 路面结冰</div>
+              </div>
+              <div class="chips">
+                <span class="chip">风寒 -12°</span>
+                <span class="chip">体感 <b data-feels-like>-9</b>°</span>
+                <span class="chip">积雪 12cm</span>
+              </div>
+            </div>
+
+            <div>
+              <button class="details-toggle" data-toggle>更多详情</button>
+              <div class="details">
+                <div class="details-inner">
+                  <div class="metrics">
+                    <div class="metric"><span class="name">风速</span><div class="bar"><i style="width: 32%"></i></div><span><b data-wind>14</b> km/h</span></div>
+                    <div class="metric"><span class="name">湿度</span><div class="bar"><i style="width: 80%"></i></div><span><b data-hum>80</b>%</span></div>
+                    <div class="metric"><span class="name">体感</span><div class="bar"><i style="width: 65%"></i></div><span>更冷</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </main>
+    </div>
+
+    <script>
+      const root = document.querySelector('.app-shell');
+      const cards = Array.from(document.querySelectorAll('.weather-card'));
+
+      // Update time text to current HH:mm
+      function updateTime() {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        document.querySelectorAll('[data-time]').forEach(el => {
+          el.textContent = `今天 · ${hh}:${mm}`;
+        });
+      }
+      updateTime();
+      setInterval(updateTime, 60 * 1000);
+
+      // Background parallax light follows cursor
+      window.addEventListener('pointermove', (e) => {
+        const x = (e.clientX / window.innerWidth) * 100;
+        const y = (e.clientY / window.innerHeight) * 100;
+        document.body.style.setProperty('--mx', `${x}%`);
+        document.body.style.setProperty('--my', `${y}%`);
+      });
+
+      // Unit toggle °C/°F
+      const segBtns = document.querySelectorAll('.seg-btn');
+      function cToF(c) { return Math.round(c * 9 / 5 + 32); }
+      function fToC(f) { return Math.round((f - 32) * 5 / 9); }
+      function applyUnit(unit) {
+        root.setAttribute('data-unit', unit);
+        segBtns.forEach(b => b.classList.toggle('active', b.dataset.unitTarget === unit));
+        // Update temps based on data-temp-c
+        cards.forEach(card => {
+          const cVal = Number(card.getAttribute('data-temp-c'));
+          const feelsLikeElem = card.querySelector('[data-feels-like]');
+          const tempElem = card.querySelector('[data-temp]');
+          if (!tempElem) return;
+          if (unit === 'c') {
+            tempElem.textContent = Math.round(cVal);
+            if (feelsLikeElem) feelsLikeElem.textContent = Math.round(cVal + (Math.random()*2 - 1));
+          } else {
+            const fVal = cToF(cVal);
+            tempElem.textContent = fVal;
+            if (feelsLikeElem) feelsLikeElem.textContent = Math.round(fVal + (Math.random()*2 - 1));
+          }
+        });
+      }
+      segBtns.forEach(btn => btn.addEventListener('click', () => applyUnit(btn.dataset.unitTarget)));
+      applyUnit('c');
+
+      // Theme toggle Day/Night
+      const themeBtn = document.getElementById('themeBtn');
+      function toggleTheme() {
+        const next = root.getAttribute('data-theme') === 'day' ? 'night' : 'day';
+        root.setAttribute('data-theme', next);
+        themeBtn.setAttribute('aria-pressed', String(next === 'night'));
+      }
+      themeBtn.addEventListener('click', toggleTheme);
+
+      // Expand details
+      document.querySelectorAll('[data-toggle]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const card = btn.closest('.weather-card');
+          const open = card.getAttribute('data-open') === 'true';
+          card.setAttribute('data-open', String(!open));
+          // Animate bars to target width
+          if (!open) {
+            card.querySelectorAll('.bar > i').forEach((i, idx) => {
+              // If inline width not set, compute from dataset
+              const width = i.style.getPropertyValue('width') || (i.style.getPropertyValue('--val') || `${20 + idx * 22}%`);
+              requestAnimationFrame(() => { i.style.width = width; });
+            });
+          }
+        });
+      });
+
+      // 3D tilt + shine
+      const clamp = (n, min, max) => Math.max(min, Math.min(n, max));
+      function attachTilt(card) {
+        let rect = card.getBoundingClientRect();
+        const shine = card.querySelector('.shine');
+        function update(e) {
+          rect = card.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          const rx = clamp(((rect.height / 2 - y) / rect.height) * 10, -10, 10);
+          const ry = clamp(((x - rect.width / 2) / rect.width) * 10, -10, 10);
+          card.style.transform = `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg) translateZ(0)`;
+          shine && shine.style.setProperty('--px', `${(x / rect.width) * 100}%`);
+          shine && shine.style.setProperty('--py', `${(y / rect.height) * 100}%`);
+        }
+        function reset() { card.style.transform = ''; }
+        card.addEventListener('pointermove', update);
+        card.addEventListener('pointerleave', reset);
+      }
+      cards.forEach(attachTilt);
+
+      // Particles: wind, rain, snow
+      function createWind(layer) {
+        const h = layer.clientHeight || 400;
+        for (let i = 0; i < 8; i++) {
+          const g = document.createElement('span');
+          g.className = 'wind-gust';
+          g.style.setProperty('--y', `${Math.round((i+1) * (h/10))}px`);
+          g.style.setProperty('--delay', `${(Math.random() * -6).toFixed(2)}s`);
+          g.style.setProperty('--d', `${(6 + Math.random() * 4).toFixed(2)}s`);
+          layer.appendChild(g);
+        }
+      }
+      function createRain(layer) {
+        const count = 36;
+        for (let i = 0; i < count; i++) {
+          const d = document.createElement('i');
+          d.className = 'drop';
+          d.style.setProperty('--x', `${Math.random() * 96 + 2}%`);
+          d.style.setProperty('--h', `${12 + Math.random() * 18}px`);
+          d.style.setProperty('--delay', `${(Math.random() * -1.8).toFixed(2)}s`);
+          d.style.setProperty('--d', `${(1.3 + Math.random() * 1.2).toFixed(2)}s`);
+          layer.appendChild(d);
+        }
+      }
+      function createSnow(layer) {
+        const count = 28;
+        for (let i = 0; i < count; i++) {
+          const f = document.createElement('i');
+          f.className = 'flake';
+          f.style.setProperty('--x', `${Math.random() * 100}%`);
+          const s = (Math.random() * 6 + 3).toFixed(0);
+          f.style.setProperty('--s', `${s}px`);
+          f.style.setProperty('--delay', `${(Math.random() * -6).toFixed(2)}s`);
+          f.style.setProperty('--d', `${(5 + Math.random() * 6).toFixed(2)}s`);
+          layer.appendChild(f);
+        }
+      }
+
+      document.querySelectorAll('[data-wind-layer]').forEach(createWind);
+      document.querySelectorAll('[data-rain-layer]').forEach(createRain);
+      document.querySelectorAll('[data-snow-layer]').forEach(createSnow);
+
+      // Keyboard: Space/Enter toggles selected card details
+      document.getElementById('cards').addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const active = document.activeElement.closest('.weather-card') || cards[0];
+        const t = active.querySelector('[data-toggle]');
+        if (t) { t.click(); e.preventDefault(); }
+      });
+    </script>
+  </body>
+  </html>
+
+
